@@ -15,7 +15,7 @@ import { logger } from '@/utils';
 import { classifyError, isNonRetryableError } from '@/utils/errors';
 import { resolveProvider, getProviderById } from '@/providers';
 import { getApiKeyValue } from '@/utils/env';
-import { getOpenAICodexRequestHeaders, getValidOpenAICodexAuth } from '@/utils/openai-codex-oauth';
+import { callOpenAICodex, streamOpenAICodex } from './openai-codex.js';
 
 export const DEFAULT_PROVIDER = 'openai';
 export const DEFAULT_MODEL = 'gpt-5.4';
@@ -68,19 +68,6 @@ function getApiKey(envVar: string): string {
 
 // Factories keyed by provider id — prefix routing is handled by resolveProvider()
 const MODEL_FACTORIES: Record<string, ModelFactory> = {
-  'openai-codex': async (name, opts) => {
-    const auth = await getValidOpenAICodexAuth();
-    return new ChatOpenAI({
-      model: name.replace(/^openai-codex:/, ''),
-      ...opts,
-      apiKey: auth.accessToken,
-      useResponsesApi: true,
-      configuration: {
-        baseURL: 'https://chatgpt.com/backend-api/codex',
-        defaultHeaders: getOpenAICodexRequestHeaders(auth),
-      },
-    });
-  },
   anthropic: (name, opts) =>
     new ChatAnthropic({
       model: name,
@@ -218,6 +205,29 @@ function buildAnthropicMessages(systemPrompt: string, userPrompt: string) {
 export async function callLlm(prompt: string, options: CallLlmOptions = {}): Promise<LlmResult> {
   const { model = DEFAULT_MODEL, systemPrompt, outputSchema, tools, signal } = options;
   const finalSystemPrompt = systemPrompt || DEFAULT_SYSTEM_PROMPT;
+  const provider = resolveProvider(model);
+
+  if (provider.id === 'openai-codex') {
+    if (outputSchema) {
+      throw new Error('[OpenAI Codex API] Structured output is not implemented yet for the Codex adapter');
+    }
+
+    const result = await withRetry(
+      () => callOpenAICodex({
+        model,
+        messages: [new SystemMessage(finalSystemPrompt), new HumanMessage(prompt)],
+        tools,
+        signal,
+      }),
+      provider.displayName,
+    );
+
+    const usage = extractUsage(result);
+    if (!tools || tools.length === 0) {
+      return { response: typeof result.content === 'string' ? result.content : '', usage };
+    }
+    return { response: result, usage };
+  }
 
   const llm = await getChatModel(model, false);
 
@@ -231,7 +241,6 @@ export async function callLlm(prompt: string, options: CallLlmOptions = {}): Pro
   }
 
   const invokeOpts = signal ? { signal } : undefined;
-  const provider = resolveProvider(model);
   let result;
 
   if (provider.id === 'anthropic') {
@@ -310,6 +319,22 @@ export async function callLlmWithMessages(
   options: CallLlmWithMessagesOptions = {},
 ): Promise<LlmResult> {
   const { model = DEFAULT_MODEL, tools, signal } = options;
+  const provider = resolveProvider(model);
+
+  if (provider.id === 'openai-codex') {
+    const result = await withRetry(
+      () => callOpenAICodex({
+        model,
+        messages,
+        tools,
+        signal,
+      }),
+      provider.displayName,
+    );
+
+    const usage = extractUsage(result);
+    return { response: result, usage };
+  }
 
   const llm = await getChatModel(model, false);
 
@@ -321,8 +346,6 @@ export async function callLlmWithMessages(
   }
 
   const invokeOpts = signal ? { signal } : undefined;
-  const provider = resolveProvider(model);
-
   // For Anthropic: annotate SystemMessage with cache_control for prompt caching
   const finalMessages = provider.id === 'anthropic'
     ? annotateSystemMessageForCaching(messages)
@@ -353,6 +376,17 @@ export async function* streamLlmWithMessages(
   options: CallLlmWithMessagesOptions = {},
 ): AsyncGenerator<AIMessageChunk, void> {
   const { model = DEFAULT_MODEL, tools, signal } = options;
+  const provider = resolveProvider(model);
+
+  if (provider.id === 'openai-codex') {
+    yield* streamOpenAICodex({
+      model,
+      messages,
+      tools,
+      signal,
+    });
+    return;
+  }
 
   const llm = await getChatModel(model, true);
 
@@ -364,8 +398,6 @@ export async function* streamLlmWithMessages(
   }
 
   const invokeOpts = signal ? { signal } : undefined;
-  const provider = resolveProvider(model);
-
   const finalMessages = provider.id === 'anthropic'
     ? annotateSystemMessageForCaching(messages)
     : messages;
