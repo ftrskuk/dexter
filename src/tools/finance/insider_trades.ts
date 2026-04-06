@@ -1,10 +1,56 @@
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { z } from 'zod';
-import { api, stripFieldsDeep } from './api.js';
+import { financeApi } from './api.js';
 import { formatToolResult } from '../types.js';
-import { TTL_1H } from './utils.js';
 
-const REDUNDANT_INSIDER_FIELDS = ['issuer'] as const;
+function matchesDateFilters(
+  filingDate: string | undefined,
+  filters: Pick<z.infer<typeof InsiderTradesInputSchema>, 'filing_date' | 'filing_date_gte' | 'filing_date_lte' | 'filing_date_gt' | 'filing_date_lt'>,
+): boolean {
+  if (!filingDate) {
+    return !filters.filing_date && !filters.filing_date_gte && !filters.filing_date_lte && !filters.filing_date_gt && !filters.filing_date_lt;
+  }
+
+  if (filters.filing_date && filingDate !== filters.filing_date) {
+    return false;
+  }
+
+  if (filters.filing_date_gte && filingDate < filters.filing_date_gte) {
+    return false;
+  }
+
+  if (filters.filing_date_lte && filingDate > filters.filing_date_lte) {
+    return false;
+  }
+
+  if (filters.filing_date_gt && filingDate <= filters.filing_date_gt) {
+    return false;
+  }
+
+  if (filters.filing_date_lt && filingDate >= filters.filing_date_lt) {
+    return false;
+  }
+
+  return true;
+}
+
+function mapTradeToLegacyShape(trade: Awaited<ReturnType<typeof financeApi.getInsiderTrades>>[number]) {
+  const shares = trade.share ?? trade.change;
+
+  return {
+    symbol: trade.symbol,
+    insider_name: trade.name,
+    full_name: trade.name,
+    owner: trade.name,
+    officer_title: undefined,
+    transaction_type: trade.transactionCode,
+    shares,
+    securities_transacted: shares,
+    price_per_share: trade.transactionPrice,
+    filing_date: trade.filingDate,
+    transaction_date: trade.transactionDate,
+  };
+}
 
 const InsiderTradesInputSchema = z.object({
   ticker: z
@@ -45,20 +91,19 @@ export const getInsiderTrades = new DynamicStructuredTool({
   description: `Retrieves insider trading transactions for a given company ticker. Insider trades include purchases and sales of company stock by executives, directors, and other insiders. This data is sourced from SEC Form 4 filings. Use filing_date filters to narrow down results by date range. Use the name parameter to filter by a specific insider.`,
   schema: InsiderTradesInputSchema,
   func: async (input) => {
-    const params: Record<string, string | number | undefined> = {
-      ticker: input.ticker.toUpperCase(),
-      limit: input.limit,
-      filing_date: input.filing_date,
-      filing_date_gte: input.filing_date_gte,
-      filing_date_lte: input.filing_date_lte,
-      filing_date_gt: input.filing_date_gt,
-      filing_date_lt: input.filing_date_lt,
-      name: input.name,
-    };
-    const { data, url } = await api.get('/insider-trades/', params, { cacheable: true, ttlMs: TTL_1H });
-    return formatToolResult(
-      stripFieldsDeep(data.insider_trades || [], REDUNDANT_INSIDER_FIELDS),
-      [url]
-    );
+    const normalizedName = input.name?.trim().toLowerCase();
+    const trades = await financeApi.getInsiderTrades(input.ticker);
+    const filteredTrades = trades
+      .filter((trade) => {
+        if (normalizedName && !trade.name?.toLowerCase().includes(normalizedName)) {
+          return false;
+        }
+
+        return matchesDateFilters(trade.filingDate, input);
+      })
+      .slice(0, input.limit)
+      .map(mapTradeToLegacyShape);
+
+    return formatToolResult(filteredTrades);
   },
 });

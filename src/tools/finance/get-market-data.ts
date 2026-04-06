@@ -19,11 +19,8 @@ Intelligent meta-tool for retrieving market data including prices, news, and ins
 
 - Current stock price snapshots (price, market cap, volume, 52-week high/low)
 - Historical stock prices over date ranges
-- Available stock ticker lookup
-- Current cryptocurrency price snapshots
-- Historical cryptocurrency prices over date ranges
-- Available crypto ticker lookup
-- Multi-asset price comparisons
+- Filtered snapshot of currently trending U.S. equity tickers
+- Multi-stock price comparisons
 - Company news and recent headlines
 - Insider trading activity
 - Price move explanations ("why did X go up/down" → combines price + news)
@@ -33,16 +30,14 @@ Intelligent meta-tool for retrieving market data including prices, news, and ins
 - Company financials like income statements, balance sheets, cash flow (use get_financials)
 - Financial metrics and key ratios (use get_financials)
 - Analyst estimates (use get_financials)
-- SEC filings (use read_filings)
-- Stock screening by criteria (use stock_screener)
 - General web searches (use web_search)
 
 ## Usage Notes
 
 - Call ONCE with the complete natural language query - the tool handles complexity internally
-- Handles ticker resolution automatically (Apple -> AAPL, Bitcoin -> BTC)
+- Handles ticker resolution automatically (Apple -> AAPL)
 - Handles date inference (e.g., "last month", "past year", "YTD")
-- For "what ticker is X?" queries, this tool can look up available tickers
+ - The ticker-list tool returns a filtered snapshot of currently trending U.S. equity tickers on Yahoo Finance, not a complete exchange directory or general ticker search
 - Returns structured JSON data with source URLs for verification
 `.trim();
 
@@ -53,7 +48,6 @@ function formatSubToolName(name: string): string {
 
 // Import market data tools directly (avoid circular deps with index.ts)
 import { getStockPrice, getStockPrices, getStockTickers } from './stock-price.js';
-import { getCryptoPriceSnapshot, getCryptoPrices, getCryptoTickers } from './crypto.js';
 import { getCompanyNews } from './news.js';
 import { getInsiderTrades } from './insider_trades.js';
 
@@ -63,10 +57,6 @@ const MARKET_DATA_TOOLS: StructuredToolInterface[] = [
   getStockPrice,
   getStockPrices,
   getStockTickers,
-  // Crypto Prices
-  getCryptoPriceSnapshot,
-  getCryptoPrices,
-  getCryptoTickers,
   // News & Activity
   getCompanyNews,
   getInsiderTrades,
@@ -84,12 +74,11 @@ Given a user's natural language query about market data, call the appropriate to
 
 ## Guidelines
 
-1. **Ticker Resolution**: Convert company/crypto names to ticker symbols:
-   - Apple → AAPL, Tesla → TSLA, Microsoft → MSFT, Amazon → AMZN
-   - Google/Alphabet → GOOGL, Meta/Facebook → META, Nvidia → NVDA
-   - Bitcoin → BTC, Ethereum → ETH, Solana → SOL
+  1. **Ticker Resolution**: Convert company names to ticker symbols:
+    - Apple → AAPL, Tesla → TSLA, Microsoft → MSFT, Amazon → AMZN
+    - Google/Alphabet → GOOGL, Meta/Facebook → META, Nvidia → NVDA
 
-2. **Date Inference**: Use schema-supported filters for date ranges:
+  2. **Date Inference**: Use schema-supported filters for date ranges:
    - "last month" → start_date 1 month ago, end_date today
    - "past year" → start_date 1 year ago, end_date today
    - "YTD" → start_date Jan 1 of current year, end_date today
@@ -97,14 +86,11 @@ Given a user's natural language query about market data, call the appropriate to
 
 3. **Tool Selection**:
    - For a current stock quote/snapshot (price, market cap, volume) → get_stock_price
-   - For historical stock prices over a date range → get_stock_prices
-   - For "what stocks are available" or ticker lookup → get_stock_tickers
-   - For a current crypto price/snapshot → get_crypto_price_snapshot
-   - For historical crypto prices over a date range → get_crypto_prices
-   - For "what cryptos are available" or crypto ticker lookup → get_crypto_tickers
-   - For news, catalysts, recent announcements → get_company_news
-   - For insider buying/selling activity → get_insider_trades
-   - For "why did X go up/down" → combine get_stock_price + get_company_news
+    - For historical stock prices over a date range → get_stock_prices
+     - For a quick snapshot of currently trending U.S. equity tickers → get_available_stock_tickers
+    - For news, catalysts, recent announcements → get_company_news
+    - For insider buying/selling activity → get_insider_trades
+    - For "why did X go up/down" → combine get_stock_price + get_company_news
 
 4. **Efficiency**:
    - For current/latest price, use snapshot tools (not historical with limit 1)
@@ -128,8 +114,7 @@ export function createGetMarketData(model: string): DynamicStructuredTool {
     name: 'get_market_data',
     description: `Intelligent meta-tool for retrieving market data including prices, news, and insider activity. Takes a natural language query and automatically routes to appropriate market data tools. Use for:
 - Current and historical stock prices
-- Current and historical cryptocurrency prices
-- Stock and crypto ticker lookup
+- Filtered snapshot of currently trending U.S. equity tickers
 - Company news and recent headlines
 - Insider trading activity`,
     schema: GetMarketDataInputSchema,

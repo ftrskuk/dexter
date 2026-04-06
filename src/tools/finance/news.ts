@@ -1,8 +1,10 @@
 import { DynamicStructuredTool } from '@langchain/core/tools';
+import YahooFinance from 'yahoo-finance2';
 import { z } from 'zod';
-import { api } from './api.js';
+import { financeApi } from './api.js';
 import { formatToolResult } from '../types.js';
-import { TTL_15M } from './utils.js';
+
+const yahooFinance = new YahooFinance({ suppressNotices: ['yahooSurvey'] });
 
 const CompanyNewsInputSchema = z.object({
   ticker: z
@@ -20,11 +22,25 @@ export const getCompanyNews = new DynamicStructuredTool({
     'Retrieves recent company news headlines for a stock ticker, including title, source, publication date, and URL. Use for company catalysts, price move explanations, press releases, and recent announcements.',
   schema: CompanyNewsInputSchema,
   func: async (input) => {
-    const params: Record<string, string | number | undefined> = {
-      ticker: input.ticker.trim().toUpperCase(),
-      limit: Math.min(input.limit, 10),
-    };
-    const { data, url } = await api.get('/news', params, { cacheable: true, ttlMs: TTL_15M });
-    return formatToolResult((data.news as unknown[]) || [], [url]);
+    const ticker = input.ticker.trim().toUpperCase();
+    const limit = Math.min(input.limit, 10);
+
+    await financeApi.getQuote(ticker).catch(() => null);
+
+    const result = await yahooFinance.search(ticker, {
+      quotesCount: 1,
+      newsCount: limit,
+      enableFuzzyQuery: false,
+    });
+
+    return formatToolResult(result.news.map((item) => ({
+      title: item.title,
+      source: item.publisher,
+      date: item.providerPublishTime instanceof Date
+        ? item.providerPublishTime.toISOString()
+        : undefined,
+      url: item.link,
+      related_tickers: item.relatedTickers,
+    })), [`https://finance.yahoo.com/quote/${ticker}/news`]);
   },
 });
