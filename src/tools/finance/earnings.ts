@@ -1,8 +1,31 @@
 import { DynamicStructuredTool } from '@langchain/core/tools';
+import YahooFinance from 'yahoo-finance2';
+import type { QuoteSummaryResult } from 'yahoo-finance2/modules/quoteSummary';
 import { z } from 'zod';
-import { api } from './api.js';
+import { financeApi } from './api.js';
 import { formatToolResult } from '../types.js';
-import { TTL_24H } from './utils.js';
+
+const yahooFinance = new YahooFinance({ suppressNotices: ['yahooSurvey'] });
+
+function toPercentDecimal(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value / 100 : undefined;
+}
+
+function getLatestQuarterlyActual(summary: QuoteSummaryResult): { revenue?: number; earnings?: number; period?: string } {
+  const quarterly = summary.earnings?.financialsChart?.quarterly ?? [];
+  const latest = quarterly[quarterly.length - 1];
+
+  return {
+    revenue: typeof latest?.revenue === 'number' ? latest.revenue : undefined,
+    earnings: typeof latest?.earnings === 'number' ? latest.earnings : undefined,
+    period: typeof latest?.date === 'string' ? latest.date : undefined,
+  };
+}
+
+function getLatestEpsHistory(summary: QuoteSummaryResult) {
+  const history = summary.earningsHistory?.history ?? [];
+  return history[history.length - 1];
+}
 
 const EarningsInputSchema = z.object({
   ticker: z
@@ -17,7 +40,42 @@ export const getEarnings = new DynamicStructuredTool({
   schema: EarningsInputSchema,
   func: async (input) => {
     const ticker = input.ticker.trim().toUpperCase();
-    const { data, url } = await api.get('/earnings', { ticker }, { cacheable: true, ttlMs: TTL_24H });
-    return formatToolResult(data.earnings || {}, [url]);
+    const [statements, summary] = await Promise.all([
+      financeApi.getStatements(ticker, 'quarterly').catch(() => null),
+      yahooFinance.quoteSummary(ticker, {
+        modules: ['calendarEvents', 'earnings', 'earningsHistory', 'earningsTrend', 'financialData'],
+      }).catch(() => null),
+    ]);
+
+    const latestIncome = (statements?.incomeStatement ?? statements?.income ?? [])[0] as Record<string, unknown> | undefined;
+    const latestQuarterlyActual = summary ? getLatestQuarterlyActual(summary as QuoteSummaryResult) : {};
+    const latestEpsHistory = summary ? getLatestEpsHistory(summary as QuoteSummaryResult) : undefined;
+    const latestTrend = summary?.earningsTrend?.trend?.find((entry) => entry?.period === '0q')
+      ?? summary?.earningsTrend?.trend?.[0];
+
+    const revenue = typeof latestIncome?.totalRevenue === 'number'
+      ? latestIncome.totalRevenue
+      : latestQuarterlyActual.revenue;
+    const eps = typeof latestIncome?.dilutedEPS === 'number'
+      ? latestIncome.dilutedEPS
+      : typeof latestIncome?.basicEPS === 'number'
+        ? latestIncome.basicEPS
+        : typeof latestEpsHistory?.epsActual === 'number'
+          ? latestEpsHistory.epsActual
+          : undefined;
+
+    return formatToolResult({
+      revenue,
+      eps,
+      revenue_surprise: summary?.calendarEvents?.earnings?.revenueAverage && revenue !== undefined
+        ? (revenue - summary.calendarEvents.earnings.revenueAverage) / summary.calendarEvents.earnings.revenueAverage
+        : undefined,
+      eps_surprise: toPercentDecimal(latestEpsHistory?.surprisePercent),
+      revenue_estimate: latestTrend?.revenueEstimate?.avg ?? summary?.calendarEvents?.earnings?.revenueAverage ?? undefined,
+      eps_estimate: latestTrend?.earningsEstimate?.avg ?? summary?.calendarEvents?.earnings?.earningsAverage ?? undefined,
+      report_period: latestIncome?.date ?? latestIncome?.endDate ?? latestQuarterlyActual.period,
+      earnings_date: summary?.calendarEvents?.earnings?.earningsDate?.[0]?.toISOString(),
+      earnings_call_date: summary?.calendarEvents?.earnings?.earningsCallDate?.[0]?.toISOString(),
+    }, [`https://finance.yahoo.com/quote/${ticker}/analysis`]);
   },
 });

@@ -1,8 +1,9 @@
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { z } from 'zod';
-import { api, stripFieldsDeep } from './api.js';
+import { financeApi, stripFieldsDeep } from './api.js';
 import { formatToolResult } from '../types.js';
-import { TTL_1H, TTL_6H } from './utils.js';
+
+const FMP_BASE_URL = 'https://financialmodelingprep.com/api/v3';
 
 const REDUNDANT_FINANCIAL_FIELDS = ['accession_number', 'currency', 'period'] as const;
 
@@ -19,11 +20,74 @@ export const getKeyRatios = new DynamicStructuredTool({
   schema: KeyRatiosInputSchema,
   func: async (input) => {
     const ticker = input.ticker.trim().toUpperCase();
-    const params = { ticker };
-    const { data, url } = await api.get('/financial-metrics/snapshot/', params, { cacheable: true, ttlMs: TTL_1H });
-    return formatToolResult(data.snapshot || {}, [url]);
+    const data = await financeApi.getKeyRatios(ticker);
+    return formatToolResult(data);
   },
 });
+
+function getFmpApiKey(): string {
+  const apiKey = process.env.FMP_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error('FMP_API_KEY is not set');
+  }
+
+  return apiKey;
+}
+
+function matchesReportPeriodFilter(
+  reportPeriod: string | undefined,
+  input: z.infer<typeof HistoricalKeyRatiosInputSchema>,
+): boolean {
+  if (!reportPeriod) {
+    return true;
+  }
+
+  if (input.report_period && reportPeriod !== input.report_period) {
+    return false;
+  }
+
+  if (input.report_period_gt && reportPeriod <= input.report_period_gt) {
+    return false;
+  }
+
+  if (input.report_period_gte && reportPeriod < input.report_period_gte) {
+    return false;
+  }
+
+  if (input.report_period_lt && reportPeriod >= input.report_period_lt) {
+    return false;
+  }
+
+  if (input.report_period_lte && reportPeriod > input.report_period_lte) {
+    return false;
+  }
+
+  return true;
+}
+
+async function fetchHistoricalFmpRatios(
+  ticker: string,
+  period: 'annual' | 'quarterly',
+  limit: number,
+): Promise<{ data: Array<Record<string, unknown>>; url: string }> {
+  const searchParams = new URLSearchParams({
+    apikey: getFmpApiKey(),
+    period: period === 'quarterly' ? 'quarter' : 'annual',
+    limit: String(limit),
+  });
+  const url = `${FMP_BASE_URL}/ratios/${ticker}`;
+  const response = await fetch(`${url}?${searchParams.toString()}`);
+
+  if (!response.ok) {
+    throw new Error(`FMP request failed for historical ratios: ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json() as unknown;
+  return {
+    data: Array.isArray(data) ? (data as Array<Record<string, unknown>>) : [],
+    url: `${url}?period=${period === 'quarterly' ? 'quarter' : 'annual'}&limit=${limit}`,
+  };
+}
 
 const HistoricalKeyRatiosInputSchema = z.object({
   ticker: z
@@ -72,19 +136,27 @@ export const getHistoricalKeyRatios = new DynamicStructuredTool({
   description: `Retrieves historical key ratios for a company, such as P/E ratio, revenue per share, and enterprise value, over a specified period. Useful for trend analysis and historical performance evaluation.`,
   schema: HistoricalKeyRatiosInputSchema,
   func: async (input) => {
-    const params: Record<string, string | number | undefined> = {
-      ticker: input.ticker,
-      period: input.period,
-      limit: input.limit,
-      report_period: input.report_period,
-      report_period_gt: input.report_period_gt,
-      report_period_gte: input.report_period_gte,
-      report_period_lt: input.report_period_lt,
-      report_period_lte: input.report_period_lte,
-    };
-    const { data, url } = await api.get('/financial-metrics/', params, { cacheable: true, ttlMs: TTL_6H });
+    const ticker = input.ticker.trim().toUpperCase();
+
+    if (input.period === 'ttm') {
+      const latestRatios = await financeApi.getKeyRatios(ticker);
+      return formatToolResult([stripFieldsDeep(latestRatios, REDUNDANT_FINANCIAL_FIELDS)], [
+        `financeApi.getKeyRatios(${ticker})`,
+      ]);
+    }
+
+    const { data, url } = await fetchHistoricalFmpRatios(ticker, input.period, input.limit);
+    const filtered = data.filter((row) => {
+      const reportPeriod = typeof row.date === 'string'
+        ? row.date
+        : typeof row.calendarYear === 'string'
+          ? row.calendarYear
+          : undefined;
+      return matchesReportPeriodFilter(reportPeriod, input);
+    });
+
     return formatToolResult(
-      stripFieldsDeep(data.financial_metrics || [], REDUNDANT_FINANCIAL_FIELDS),
+      stripFieldsDeep(filtered, REDUNDANT_FINANCIAL_FIELDS),
       [url]
     );
   },
