@@ -22,20 +22,17 @@ Intelligent meta-tool for retrieving company financial data. Takes a natural lan
 - Financial metrics and key ratios (P/E ratio, market cap, EPS, dividend yield, enterprise value, ROE, ROA, margins)
 - Historical metrics and trend analysis across multiple periods
 - Analyst estimates and price targets
-- Revenue segment breakdowns
 - Earnings data (EPS/revenue beat-miss, earnings surprises)
 - Multi-company comparisons (pass the full query, it handles routing internally)
 
 ## When NOT to Use
 
-- Stock or cryptocurrency prices (use get_market_data instead)
+- Stock prices (use get_market_data instead)
 - Company news or insider trading activity (use get_market_data instead)
 - General web searches or non-financial topics (use web_search instead)
 - Questions that don't require external financial data (answer directly from knowledge)
 - Non-public company information
 - Real-time trading or order execution
-- Reading SEC filing content (use read_filings instead)
-- Stock screening by criteria (use stock_screener)
 
 ## Usage Notes
 
@@ -55,7 +52,6 @@ function formatSubToolName(name: string): string {
 import { getIncomeStatements, getBalanceSheets, getCashFlowStatements, getAllFinancialStatements } from './fundamentals.js';
 import { getKeyRatios, getHistoricalKeyRatios } from './key-ratios.js';
 import { getAnalystEstimates } from './estimates.js';
-import { getSegmentedRevenues } from './segments.js';
 import { getEarnings } from './earnings.js';
 
 // All finance tools available for routing
@@ -71,8 +67,6 @@ const FINANCE_TOOLS: StructuredToolInterface[] = [
   getKeyRatios,
   getHistoricalKeyRatios,
   getAnalystEstimates,
-  // Other Data
-  getSegmentedRevenues,
 ];
 
 // Create a map for quick tool lookup by name
@@ -98,8 +92,8 @@ Given a user's natural language query about financial data, call the appropriate
    - "YTD" → report_period_gte Jan 1 of current year
 
 3. **Tool Selection**:
-   - For latest financial metrics snapshot (P/E, margins, ROE, EPS, growth rates) → get_financial_metrics_snapshot
-   - For historical P/E ratio, historical market cap, valuation metrics over time → get_key_ratios
+   - For latest financial metrics snapshot (P/E, P/B, P/S, ROE, ROA, margins, leverage) → get_key_ratios
+   - For historical P/E ratio and valuation metrics over time → get_historical_key_ratios
    - For revenue, earnings, profitability → get_income_statements
    - For latest earnings release snapshot, EPS/revenue beat-miss, earnings surprises → get_earnings
    - For debt, assets, equity → get_balance_sheets
@@ -136,7 +130,7 @@ export function createGetFinancials(model: string): DynamicStructuredTool {
 - Financial metrics and key ratios (P/E ratio, market cap, EPS, dividend yield, ROE, margins)
 - Historical metrics and trend analysis
 - Analyst estimates and price targets
-- Earnings data and revenue segments`,
+- Earnings data`,
     schema: GetFinancialsInputSchema,
     func: async (input, _runManager, config?: RunnableConfig) => {
       const onProgress = config?.metadata?.onProgress as ((msg: string) => void) | undefined;

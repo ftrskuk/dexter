@@ -52,6 +52,17 @@ function fmtDate(d: unknown): string {
 
 type Rec = Record<string, unknown>;
 
+function pickValue(record: Rec, keys: string[]): unknown {
+  for (const key of keys) {
+    const value = record[key];
+    if (value !== undefined && value !== null) {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
 // ---------------------------------------------------------------------------
 // Financial statement formatters
 // ---------------------------------------------------------------------------
@@ -116,15 +127,35 @@ export function formatKeyRatios(data: unknown, args?: Rec): string {
   if (Object.keys(d).length === 0) return 'No key metrics available.';
   const ticker = ((d.ticker ?? args?.ticker) as string)?.toUpperCase() ?? '';
   const lines = [`${ticker} Key Metrics`];
-  lines.push(`- Market Cap: ${fmtNum(d.market_cap)}`);
-  lines.push(`- P/E: ${d.pe_ratio ?? '—'} | EPS: ${fmtPrice(d.eps)}`);
-  lines.push(`- Revenue Growth: ${fmtPct(d.revenue_growth_rate)} | Earnings Growth: ${fmtPct(d.earnings_growth_rate)}`);
-  if (d.gross_margin !== undefined || d.operating_margin !== undefined || d.net_margin !== undefined) {
-    lines.push(`- Gross Margin: ${fmtPct(d.gross_margin)} | Op Margin: ${fmtPct(d.operating_margin)} | Net Margin: ${fmtPct(d.net_margin)}`);
+  const marketCap = pickValue(d, ['market_cap', 'marketCap']);
+  const pe = pickValue(d, ['pe_ratio', 'pe', 'price_earnings_ratio', 'priceEarningsRatio']);
+  const pb = pickValue(d, ['pb_ratio', 'pb', 'price_to_book_ratio', 'priceToBookRatio']);
+  const ps = pickValue(d, ['ps_ratio', 'ps', 'price_to_sales_ratio', 'priceToSalesRatio']);
+  const eps = pickValue(d, ['eps', 'earnings_per_share']);
+  const revenueGrowth = pickValue(d, ['revenue_growth_rate', 'revenueGrowth']);
+  const earningsGrowth = pickValue(d, ['earnings_growth_rate', 'earningsGrowth']);
+  const grossMargin = pickValue(d, ['gross_margin', 'grossMargin', 'gross_profit_margin', 'grossProfitMargin']);
+  const operatingMargin = pickValue(d, ['operating_margin', 'operatingMargin', 'operating_profit_margin', 'operatingProfitMargin']);
+  const netMargin = pickValue(d, ['net_margin', 'netMargin']);
+  const roe = pickValue(d, ['roe', 'return_on_equity', 'returnOnEquity']);
+  const roa = pickValue(d, ['roa', 'return_on_assets', 'returnOnAssets']);
+  const roic = pickValue(d, ['roic', 'return_on_invested_capital', 'returnOnInvestedCapital']);
+  const dividendYield = pickValue(d, ['dividend_yield', 'dividendYield']);
+  const debtToEquity = pickValue(d, ['debt_to_equity', 'debtToEquity', 'debt_equity_ratio', 'debtEquityRatio']);
+
+  if (marketCap !== undefined) lines.push(`- Market Cap: ${fmtNum(marketCap)}`);
+  lines.push(`- P/E: ${pe ?? '—'} | P/B: ${pb ?? '—'} | P/S: ${ps ?? '—'} | EPS: ${fmtPrice(eps)}`);
+  if (revenueGrowth !== undefined || earningsGrowth !== undefined) {
+    lines.push(`- Revenue Growth: ${fmtPct(revenueGrowth)} | Earnings Growth: ${fmtPct(earningsGrowth)}`);
   }
-  if (d.roe !== undefined) lines.push(`- ROE: ${fmtPct(d.roe)} | ROIC: ${fmtPct(d.roic)}`);
-  if (d.dividend_yield !== undefined) lines.push(`- Dividend Yield: ${fmtPct(d.dividend_yield)}`);
-  if (d.debt_to_equity !== undefined) lines.push(`- D/E: ${Number(d.debt_to_equity)?.toFixed(2) ?? '—'}`);
+  if (grossMargin !== undefined || operatingMargin !== undefined || netMargin !== undefined) {
+    lines.push(`- Gross Margin: ${fmtPct(grossMargin)} | Op Margin: ${fmtPct(operatingMargin)} | Net Margin: ${fmtPct(netMargin)}`);
+  }
+  if (roe !== undefined || roa !== undefined || roic !== undefined) {
+    lines.push(`- ROE: ${fmtPct(roe)} | ROA: ${fmtPct(roa)} | ROIC: ${fmtPct(roic)}`);
+  }
+  if (dividendYield !== undefined) lines.push(`- Dividend Yield: ${fmtPct(dividendYield)}`);
+  if (debtToEquity !== undefined) lines.push(`- D/E: ${Number(debtToEquity).toFixed(2)}`);
   return lines.join('\n');
 }
 
@@ -136,7 +167,7 @@ export function formatHistoricalKeyRatios(data: unknown, args?: Rec): string {
   lines.push('| Period | P/E | EPS | Rev Growth | Op Margin | ROE |');
   lines.push('|--------|-----|-----|------------|-----------|-----|');
   for (const row of items as Rec[]) {
-    lines.push(`| ${fmtDate(row.report_period ?? row.date)} | ${row.pe_ratio ?? '—'} | ${fmtPrice(row.eps)} | ${fmtPct(row.revenue_growth_rate)} | ${fmtPct(row.operating_margin)} | ${fmtPct(row.roe)} |`);
+    lines.push(`| ${fmtDate(row.report_period ?? row.date)} | ${pickValue(row, ['pe_ratio', 'pe', 'price_earnings_ratio', 'priceEarningsRatio']) ?? '—'} | ${fmtPrice(pickValue(row, ['eps', 'earnings_per_share']))} | ${fmtPct(pickValue(row, ['revenue_growth_rate', 'revenueGrowth']))} | ${fmtPct(pickValue(row, ['operating_margin', 'operatingMargin', 'operating_profit_margin', 'operatingProfitMargin']))} | ${fmtPct(pickValue(row, ['roe', 'return_on_equity', 'returnOnEquity']))} |`);
   }
   return lines.join('\n');
 }
@@ -148,7 +179,8 @@ export function formatHistoricalKeyRatios(data: unknown, args?: Rec): string {
 export function formatStockPrice(data: unknown): string {
   const d = (data && typeof data === 'object') ? data as Rec : {};
   const ticker = (d.ticker as string)?.toUpperCase() ?? '';
-  return `${ticker}: ${fmtPrice(d.close ?? d.price)} (H: ${fmtPrice(d.high)} L: ${fmtPrice(d.low)}) Vol: ${fmtNum(d.volume)}`;
+  const asOf = typeof d.as_of === 'string' ? ` as of ${d.as_of}` : '';
+  return `${ticker}: ${fmtPrice(d.close ?? d.price)} (O: ${fmtPrice(d.open)} H: ${fmtPrice(d.high)} L: ${fmtPrice(d.low)}) Vol: ${fmtNum(d.volume)}${asOf}`;
 }
 
 export function formatStockPrices(data: unknown): string {
@@ -210,29 +242,6 @@ export function formatEarnings(data: unknown): string {
   return lines.length > 0 ? lines.join('\n') : JSON.stringify(d);
 }
 
-export function formatCryptoPrice(data: unknown): string {
-  const d = (data && typeof data === 'object') ? data as Rec : {};
-  const ticker = (d.ticker as string)?.toUpperCase() ?? '';
-  return `${ticker}: ${fmtPrice(d.close ?? d.price)} (H: ${fmtPrice(d.high)} L: ${fmtPrice(d.low)}) Vol: ${fmtNum(d.volume)}`;
-}
-
-export function formatSegmentedRevenues(data: unknown, args?: Rec): string {
-  const items = Array.isArray(data) ? data : [];
-  if (items.length === 0) return 'No segment data available.';
-  const ticker = (args?.ticker as string)?.toUpperCase() ?? '';
-  const lines = [`${ticker} Revenue Segments`, ''];
-  for (const period of items as Rec[]) {
-    lines.push(`**${fmtDate(period.report_period)}**`);
-    const segments = (period.segments ?? period.revenue_segments) as Rec[] | undefined;
-    if (Array.isArray(segments)) {
-      for (const seg of segments) {
-        lines.push(`- ${seg.label ?? seg.name ?? 'Unknown'}: ${fmtNum(seg.value ?? seg.revenue)}`);
-      }
-    }
-  }
-  return lines.join('\n');
-}
-
 // ---------------------------------------------------------------------------
 // Formatter registry — maps sub-tool names to formatters
 // ---------------------------------------------------------------------------
@@ -246,14 +255,11 @@ export const FINANCIAL_FORMATTERS: Record<string, (data: unknown, args?: Rec) =>
   get_historical_key_ratios: formatHistoricalKeyRatios,
   get_analyst_estimates: formatAnalystEstimates,
   get_earnings: formatEarnings,
-  get_segmented_revenues: formatSegmentedRevenues,
 };
 
 export const MARKET_DATA_FORMATTERS: Record<string, (data: unknown, args?: Rec) => string> = {
-  get_stock_price_snapshot: formatStockPrice,
+  get_stock_price: formatStockPrice,
   get_stock_prices: formatStockPrices,
-  get_crypto_price_snapshot: formatCryptoPrice,
-  get_crypto_prices: formatStockPrices,
   get_company_news: formatNews,
   get_insider_trades: formatInsiderTrades,
 };
