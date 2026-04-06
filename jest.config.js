@@ -4,6 +4,7 @@ export default {
   testEnvironment: 'node',
   extensionsToTreatAsEsm: ['.ts', '.tsx'],
   moduleNameMapper: {
+    '^@/(.*)$': '<rootDir>/src/$1',
     '^(\\.{1,2}/.*)\\.js$': '$1',
   },
   transform: {
@@ -27,7 +28,7 @@ export default {
   transformIgnorePatterns: [
     'node_modules/(?!(p-retry|is-network-error|@langchain)/)',
   ],
-  testMatch: ['**/__tests__/**/*.test.ts'],
+  testMatch: ['**/__tests__/**/*.test.ts', '<rootDir>/src/tools/registry.test.ts'],
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
   collectCoverageFrom: [
     'src/agent/**/*.ts',
@@ -38,4 +39,3 @@ export default {
   coverageDirectory: 'coverage',
   verbose: true,
 };
-
