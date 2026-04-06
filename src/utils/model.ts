@@ -16,6 +16,12 @@ const PROVIDER_MODELS: Record<string, Model[]> = {
     { id: 'gpt-5.4', displayName: 'GPT 5.4' },
     { id: 'gpt-4.1', displayName: 'GPT 4.1' },
   ],
+  'openai-codex': [
+    { id: 'openai-codex:gpt-5.4', displayName: 'GPT 5.4 (Codex OAuth)' },
+    { id: 'openai-codex:gpt-5.4-mini', displayName: 'GPT 5.4 Mini (Codex OAuth)' },
+    { id: 'openai-codex:gpt-5.3-codex', displayName: 'GPT 5.3 Codex' },
+    { id: 'openai-codex:gpt-5.3-codex-spark', displayName: 'GPT 5.3 Codex Spark' },
+  ],
   anthropic: [
     { id: 'claude-sonnet-4-6', displayName: 'Sonnet 4.6' },
     { id: 'claude-opus-4-6', displayName: 'Opus 4.6' },

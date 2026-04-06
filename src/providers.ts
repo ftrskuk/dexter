@@ -12,6 +12,7 @@ export interface ProviderDef {
   modelPrefix: string;
   /** Environment variable name for API key. Omit for local providers (e.g., Ollama). */
   apiKeyEnvVar?: string;
+  authMode?: 'apiKey' | 'oauth' | 'none';
   /** Fast model variant for lightweight tasks like summarization. */
   fastModel?: string;
   /** Default context window size in tokens. Used for model-aware compaction thresholds. */
@@ -24,7 +25,16 @@ export const PROVIDERS: ProviderDef[] = [
     displayName: 'OpenAI',
     modelPrefix: '',
     apiKeyEnvVar: 'OPENAI_API_KEY',
+    authMode: 'apiKey',
     fastModel: 'gpt-4.1',
+    contextWindow: 1_047_576,
+  },
+  {
+    id: 'openai-codex',
+    displayName: 'OpenAI Codex',
+    modelPrefix: 'openai-codex:',
+    authMode: 'oauth',
+    fastModel: 'openai-codex:gpt-5.4-mini',
     contextWindow: 1_047_576,
   },
   {
@@ -32,6 +42,7 @@ export const PROVIDERS: ProviderDef[] = [
     displayName: 'Anthropic',
     modelPrefix: 'claude-',
     apiKeyEnvVar: 'ANTHROPIC_API_KEY',
+    authMode: 'apiKey',
     fastModel: 'claude-haiku-4-5',
     contextWindow: 200_000,
   },
@@ -40,6 +51,7 @@ export const PROVIDERS: ProviderDef[] = [
     displayName: 'Google',
     modelPrefix: 'gemini-',
     apiKeyEnvVar: 'GOOGLE_API_KEY',
+    authMode: 'apiKey',
     fastModel: 'gemini-3-flash-preview',
     contextWindow: 1_000_000,
   },
@@ -48,6 +60,7 @@ export const PROVIDERS: ProviderDef[] = [
     displayName: 'xAI',
     modelPrefix: 'grok-',
     apiKeyEnvVar: 'XAI_API_KEY',
+    authMode: 'apiKey',
     fastModel: 'grok-4-1-fast-reasoning',
     contextWindow: 131_072,
   },
@@ -56,6 +69,7 @@ export const PROVIDERS: ProviderDef[] = [
     displayName: 'Moonshot',
     modelPrefix: 'kimi-',
     apiKeyEnvVar: 'MOONSHOT_API_KEY',
+    authMode: 'apiKey',
     fastModel: 'kimi-k2-5',
     contextWindow: 131_072,
   },
@@ -64,6 +78,7 @@ export const PROVIDERS: ProviderDef[] = [
     displayName: 'DeepSeek',
     modelPrefix: 'deepseek-',
     apiKeyEnvVar: 'DEEPSEEK_API_KEY',
+    authMode: 'apiKey',
     fastModel: 'deepseek-chat',
     contextWindow: 128_000,
   },
@@ -72,6 +87,7 @@ export const PROVIDERS: ProviderDef[] = [
     displayName: 'OpenRouter',
     modelPrefix: 'openrouter:',
     apiKeyEnvVar: 'OPENROUTER_API_KEY',
+    authMode: 'apiKey',
     fastModel: 'openrouter:openai/gpt-4o-mini',
     contextWindow: 128_000,
   },
@@ -79,6 +95,7 @@ export const PROVIDERS: ProviderDef[] = [
     id: 'ollama',
     displayName: 'Ollama',
     modelPrefix: 'ollama:',
+    authMode: 'none',
     contextWindow: 128_000,
   },
 ];
