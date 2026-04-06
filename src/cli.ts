@@ -556,6 +556,36 @@ export async function runCli() {
       return;
     }
 
+    if (state.appState === 'oauth_confirm' && state.pendingProvider) {
+      const selector = createApiKeyConfirmSelector((wantsToSet) =>
+        void modelSelection.handleOAuthConfirm(wantsToSet),
+      );
+      showScreenOverlay(
+        'Sign in with OpenAI Codex',
+        `Dexter will open a browser and authenticate ${getProviderDisplayName(state.pendingProvider)} using the unofficial Codex OAuth flow.`,
+        selector,
+        'Enter to continue · esc to cancel',
+        selector,
+      );
+      return;
+    }
+
+    if (state.appState === 'oauth_pending' && state.pendingProvider) {
+      const body = new Container();
+      body.addChild(new Text(theme.muted(state.oauthStatus ?? 'Waiting for browser login...'), 0, 0));
+      if (state.oauthUrl) {
+        body.addChild(new Spacer(1));
+        body.addChild(new Text(state.oauthUrl, 0, 0));
+      }
+      showScreenOverlay(
+        `Waiting for ${getProviderDisplayName(state.pendingProvider)} login`,
+        'Complete the login in your browser. Dexter will continue automatically after the callback is received.',
+        body,
+        'esc to cancel the selection flow',
+      );
+      return;
+    }
+
     if (state.appState === 'api_key_input' && state.pendingProvider) {
       const input = new ApiKeyInputComponent(true);
       input.onSubmit = (apiKey) => modelSelection.handleApiKeySubmit(apiKey);

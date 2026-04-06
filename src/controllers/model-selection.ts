@@ -4,6 +4,7 @@ import {
   getProviderDisplayName,
   saveApiKeyForProvider,
 } from '../utils/env.js';
+import { getProviderById } from '../providers.js';
 import {
   getDefaultModelForProvider,
   getModelsForProvider,
@@ -12,6 +13,11 @@ import {
 import { getOllamaModels } from '../utils/ollama.js';
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from '../model/llm.js';
 import { InMemoryChatHistory } from '../utils/in-memory-chat-history.js';
+import {
+  hasStoredOpenAICodexAuth,
+  loginOpenAICodex,
+  saveOpenAICodexAuth,
+} from '../utils/openai-codex-oauth.js';
 
 const SELECTION_STATES = [
   'provider_select',
@@ -19,6 +25,8 @@ const SELECTION_STATES = [
   'model_input',
   'api_key_confirm',
   'api_key_input',
+  'oauth_confirm',
+  'oauth_pending',
 ] as const;
 
 export type SelectionState = (typeof SELECTION_STATES)[number];
@@ -28,6 +36,8 @@ export interface ModelSelectionState {
   appState: AppState;
   pendingProvider: string | null;
   pendingModels: Model[];
+  oauthUrl?: string | null;
+  oauthStatus?: string | null;
 }
 
 type ChangeListener = () => void;
@@ -39,6 +49,9 @@ export class ModelSelectionController {
   private pendingProviderValue: string | null = null;
   private pendingModelsValue: Model[] = [];
   private pendingSelectedModelId: string | null = null;
+  private oauthUrlValue: string | null = null;
+  private oauthStatusValue: string | null = null;
+  private oauthAttemptCounter = 0;
   private readonly onError: (message: string) => void;
   private readonly onChange?: ChangeListener;
   private readonly chatHistory = new InMemoryChatHistory(DEFAULT_MODEL);
@@ -58,6 +71,8 @@ export class ModelSelectionController {
       appState: this.appStateValue,
       pendingProvider: this.pendingProviderValue,
       pendingModels: this.pendingModelsValue,
+      oauthUrl: this.oauthUrlValue,
+      oauthStatus: this.oauthStatusValue,
     };
   }
 
@@ -129,13 +144,15 @@ export class ModelSelectionController {
       return;
     }
 
-    if (checkApiKeyExistsForProvider(this.pendingProviderValue)) {
+    if (this.hasProviderCredentials(this.pendingProviderValue)) {
       this.completeModelSwitch(this.pendingProviderValue, modelId);
       return;
     }
 
     this.pendingSelectedModelId = modelId;
-    this.appStateValue = 'api_key_confirm';
+    this.appStateValue = this.getProviderAuthMode(this.pendingProviderValue) === 'oauth'
+      ? 'oauth_confirm'
+      : 'api_key_confirm';
     this.emitChange();
   }
 
@@ -150,13 +167,15 @@ export class ModelSelectionController {
     }
 
     const fullModelId = `${this.pendingProviderValue}:${modelName}`;
-    if (checkApiKeyExistsForProvider(this.pendingProviderValue)) {
+    if (this.hasProviderCredentials(this.pendingProviderValue)) {
       this.completeModelSwitch(this.pendingProviderValue, fullModelId);
       return;
     }
 
     this.pendingSelectedModelId = fullModelId;
-    this.appStateValue = 'api_key_confirm';
+    this.appStateValue = this.getProviderAuthMode(this.pendingProviderValue) === 'oauth'
+      ? 'oauth_confirm'
+      : 'api_key_confirm';
     this.emitChange();
   }
 
@@ -170,7 +189,7 @@ export class ModelSelectionController {
     if (
       this.pendingProviderValue &&
       this.pendingSelectedModelId &&
-      checkApiKeyExistsForProvider(this.pendingProviderValue)
+      this.hasProviderCredentials(this.pendingProviderValue)
     ) {
       this.completeModelSwitch(this.pendingProviderValue, this.pendingSelectedModelId);
       return;
@@ -205,7 +224,7 @@ export class ModelSelectionController {
     if (
       !apiKey &&
       this.pendingProviderValue &&
-      checkApiKeyExistsForProvider(this.pendingProviderValue)
+      this.hasProviderCredentials(this.pendingProviderValue)
     ) {
       this.completeModelSwitch(this.pendingProviderValue, this.pendingSelectedModelId);
       return;
@@ -213,6 +232,75 @@ export class ModelSelectionController {
 
     this.onError('API key not set. Provider unchanged.');
     this.resetPendingState();
+  }
+
+  async handleOAuthConfirm(startLogin: boolean) {
+    if (!startLogin) {
+      this.onError('OAuth login cancelled. Provider unchanged.');
+      this.resetPendingState();
+      return;
+    }
+
+    if (!this.pendingProviderValue || !this.pendingSelectedModelId) {
+      this.onError('No OpenAI Codex model selected.');
+      this.resetPendingState();
+      return;
+    }
+
+    this.appStateValue = 'oauth_pending';
+    this.oauthStatusValue = 'Starting OpenAI Codex OAuth login...';
+    this.oauthUrlValue = null;
+    const attemptId = ++this.oauthAttemptCounter;
+    this.emitChange();
+
+    try {
+      const auth = await loginOpenAICodex({
+        onUrl: (url) => {
+          if (attemptId !== this.oauthAttemptCounter) {
+            return;
+          }
+          this.oauthUrlValue = url;
+          this.oauthStatusValue = 'Browser login started. If the browser did not open, use the URL shown below.';
+          this.emitChange();
+        },
+        onStatus: (status) => {
+          if (attemptId !== this.oauthAttemptCounter) {
+            return;
+          }
+          this.oauthStatusValue = status;
+          this.emitChange();
+        },
+      });
+
+      if (attemptId !== this.oauthAttemptCounter) {
+        return;
+      }
+
+      if (!saveOpenAICodexAuth(auth)) {
+        throw new Error('Failed to store OpenAI Codex OAuth credentials.');
+      }
+
+      this.completeModelSwitch(this.pendingProviderValue, this.pendingSelectedModelId);
+    } catch (error) {
+      if (attemptId !== this.oauthAttemptCounter) {
+        return;
+      }
+      this.onError(error instanceof Error ? error.message : String(error));
+      this.resetPendingState();
+    }
+  }
+
+  private getProviderAuthMode(providerId: string): 'apiKey' | 'oauth' | 'none' {
+    const authMode = getProviderById(providerId)?.authMode;
+    return authMode ?? 'apiKey';
+  }
+
+  private hasProviderCredentials(providerId: string): boolean {
+    if (this.getProviderAuthMode(providerId) === 'oauth') {
+      return hasStoredOpenAICodexAuth();
+    }
+
+    return checkApiKeyExistsForProvider(providerId);
   }
 
   private completeModelSwitch(newProvider: string, newModelId: string) {
@@ -224,14 +312,19 @@ export class ModelSelectionController {
     this.pendingProviderValue = null;
     this.pendingModelsValue = [];
     this.pendingSelectedModelId = null;
+    this.oauthUrlValue = null;
+    this.oauthStatusValue = null;
     this.appStateValue = 'idle';
     this.emitChange();
   }
 
   private resetPendingState() {
+    this.oauthAttemptCounter += 1;
     this.pendingProviderValue = null;
     this.pendingModelsValue = [];
     this.pendingSelectedModelId = null;
+    this.oauthUrlValue = null;
+    this.oauthStatusValue = null;
     this.appStateValue = 'idle';
     this.emitChange();
   }
