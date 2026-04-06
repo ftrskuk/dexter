@@ -451,7 +451,10 @@ export async function runCli() {
         queueLength: defaultQueue.length(),
       });
     }
-    tui.setFocus(editor);
+
+    if (!tui.hasOverlay() && !agentRunner.pendingApproval && !modelSelection.isInSelectionFlow()) {
+      tui.setFocus(editor);
+    }
   };
 
   /**
@@ -571,17 +574,15 @@ export async function runCli() {
     }
 
     if (state.appState === 'oauth_pending' && state.pendingProvider) {
-      const body = new Container();
-      body.addChild(new Text(theme.muted(state.oauthStatus ?? 'Waiting for browser login...'), 0, 0));
-      if (state.oauthUrl) {
-        body.addChild(new Spacer(1));
-        body.addChild(new Text(state.oauthUrl, 0, 0));
-      }
+      const input = new ApiKeyInputComponent();
+      input.onSubmit = (value) => modelSelection.handleOAuthRedirectSubmit(value);
+      input.onCancel = () => modelSelection.handleOAuthRedirectSubmit(null);
       showScreenOverlay(
         `Waiting for ${getProviderDisplayName(state.pendingProvider)} login`,
-        'Complete the login in your browser. Dexter will continue automatically after the callback is received.',
-        body,
-        'esc to cancel the selection flow',
+        `${state.oauthStatus ?? 'Waiting for browser login...'}${state.oauthUrl ? `\n\nIf the browser shows a localhost error, copy the full address bar URL after the redirect and paste it below:\n${state.oauthUrl}` : ''}`,
+        input,
+        'Paste redirected localhost URL and press Enter · Esc to cancel',
+        input,
       );
       return;
     }

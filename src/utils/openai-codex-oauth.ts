@@ -5,9 +5,9 @@ import { loadConfig, saveConfig } from './config.js';
 const OPENAI_CODEX_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann';
 const OPENAI_CODEX_AUTHORIZE_URL = 'https://auth.openai.com/oauth/authorize';
 const OPENAI_CODEX_TOKEN_URL = 'https://auth.openai.com/oauth/token';
-const OPENAI_CODEX_REDIRECT_URI = 'http://127.0.0.1:1455/auth/callback';
+const OPENAI_CODEX_REDIRECT_URI = 'http://localhost:1455/auth/callback';
 const OPENAI_CODEX_SCOPES = 'openid profile email offline_access';
-const OPENAI_CODEX_ORIGINATOR = 'dexter';
+const OPENAI_CODEX_ORIGINATOR = 'codex_cli_rs';
 const OPENAI_CODEX_REFRESH_BUFFER_MS = 5 * 60 * 1000;
 const OPENAI_CODEX_LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -40,6 +40,12 @@ export interface OpenAICodexAuthRecord {
 interface LoginCallbacks {
   onUrl?: (url: string) => void;
   onStatus?: (status: string) => void;
+  waitForManualRedirect?: () => Promise<string>;
+}
+
+interface CallbackListener {
+  promise: Promise<string>;
+  stop: () => void;
 }
 
 function decodeJwtClaims(token: string | undefined): JwtClaims | null {
@@ -136,11 +142,49 @@ async function openBrowser(url: string): Promise<boolean> {
   }
 }
 
-async function waitForCallback(expectedState: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    let settled = false;
+function extractAuthorizationCode(input: string, expectedState: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    throw new Error('Paste the full redirected localhost URL from your browser.');
+  }
 
-    let server: ReturnType<typeof Bun.serve>;
+  if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+    throw new Error('Paste the full redirected localhost URL, not just part of it.');
+  }
+
+  const url = new URL(trimmed);
+  const code = url.searchParams.get('code');
+  const state = url.searchParams.get('state');
+
+  if (url.pathname !== '/auth/callback' || !code) {
+    throw new Error('Redirect URL is missing the OAuth code.');
+  }
+
+  if (state !== expectedState) {
+    throw new Error('Redirect URL state does not match the login session.');
+  }
+
+  return code;
+}
+
+function createCallbackListener(expectedState: string): CallbackListener {
+  let server: ReturnType<typeof Bun.serve> | null = null;
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  let settled = false;
+
+  const stop = () => {
+    if (timeout) {
+      clearTimeout(timeout);
+      timeout = null;
+    }
+    if (server) {
+      server.stop(true);
+      server = null;
+    }
+  };
+
+  const promise = new Promise<string>((resolve, reject) => {
+    let settled = false;
     try {
       server = Bun.serve({
         port: 1455,
@@ -162,7 +206,7 @@ async function waitForCallback(expectedState: string): Promise<string> {
           }
 
           settled = true;
-          setTimeout(() => server.stop(true), 0);
+          stop();
           resolve(code);
 
           return new Response('<html><body><h1>Dexter login complete</h1><p>You can return to the terminal.</p></body></html>', {
@@ -171,18 +215,20 @@ async function waitForCallback(expectedState: string): Promise<string> {
         },
       });
     } catch (error) {
-      reject(new Error(`Failed to start OpenAI callback server on 127.0.0.1:1455: ${error instanceof Error ? error.message : String(error)}`));
+      reject(new Error(`Failed to start OpenAI callback server on localhost:1455: ${error instanceof Error ? error.message : String(error)}`));
       return;
     }
 
-    setTimeout(() => {
+    timeout = setTimeout(() => {
       if (settled) {
         return;
       }
-      server.stop(true);
+      stop();
       reject(new Error('OpenAI Codex OAuth login timed out.'));
     }, OPENAI_CODEX_LOGIN_TIMEOUT_MS);
   });
+
+  return { promise, stop };
 }
 
 async function exchangeCodeForTokens(code: string, verifier: string): Promise<OpenAICodexAuthRecord> {
@@ -277,15 +323,20 @@ export async function loginOpenAICodex(callbacks: LoginCallbacks = {}): Promise<
   const challenge = generateCodeChallenge(verifier);
   const state = generateState();
   const url = buildAuthorizationUrl(challenge, state);
+  const callbackListener = createCallbackListener(state);
+  const manualRedirectPromise = callbacks.waitForManualRedirect
+    ? callbacks.waitForManualRedirect().then((input) => extractAuthorizationCode(input, state))
+    : new Promise<string>(() => undefined);
 
   callbacks.onUrl?.(url);
-  callbacks.onStatus?.('Waiting for OpenAI authentication callback on http://127.0.0.1:1455/auth/callback');
+  callbacks.onStatus?.('Waiting for OpenAI authentication callback on http://localhost:1455/auth/callback or a pasted redirect URL');
   const opened = await openBrowser(url);
   if (!opened) {
     callbacks.onStatus?.('Open the login URL manually in your browser to continue.');
   }
 
-  const code = await waitForCallback(state);
+  const code = await Promise.race([callbackListener.promise, manualRedirectPromise]);
+  callbackListener.stop();
   callbacks.onStatus?.('Exchanging authorization code for OpenAI credentials...');
   return exchangeCodeForTokens(code, verifier);
 }

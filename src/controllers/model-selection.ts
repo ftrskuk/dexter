@@ -38,6 +38,7 @@ export interface ModelSelectionState {
   pendingModels: Model[];
   oauthUrl?: string | null;
   oauthStatus?: string | null;
+  oauthCanPasteRedirect?: boolean;
 }
 
 type ChangeListener = () => void;
@@ -51,7 +52,10 @@ export class ModelSelectionController {
   private pendingSelectedModelId: string | null = null;
   private oauthUrlValue: string | null = null;
   private oauthStatusValue: string | null = null;
+  private oauthCanPasteRedirectValue = false;
   private oauthAttemptCounter = 0;
+  private pendingOAuthRedirectResolve: ((value: string) => void) | null = null;
+  private pendingOAuthRedirectReject: ((error: Error) => void) | null = null;
   private readonly onError: (message: string) => void;
   private readonly onChange?: ChangeListener;
   private readonly chatHistory = new InMemoryChatHistory(DEFAULT_MODEL);
@@ -73,6 +77,7 @@ export class ModelSelectionController {
       pendingModels: this.pendingModelsValue,
       oauthUrl: this.oauthUrlValue,
       oauthStatus: this.oauthStatusValue,
+      oauthCanPasteRedirect: this.oauthCanPasteRedirectValue,
     };
   }
 
@@ -250,6 +255,7 @@ export class ModelSelectionController {
     this.appStateValue = 'oauth_pending';
     this.oauthStatusValue = 'Starting OpenAI Codex OAuth login...';
     this.oauthUrlValue = null;
+    this.oauthCanPasteRedirectValue = true;
     const attemptId = ++this.oauthAttemptCounter;
     this.emitChange();
 
@@ -270,6 +276,11 @@ export class ModelSelectionController {
           this.oauthStatusValue = status;
           this.emitChange();
         },
+        waitForManualRedirect: () =>
+          new Promise<string>((resolve, reject) => {
+            this.pendingOAuthRedirectResolve = resolve;
+            this.pendingOAuthRedirectReject = reject;
+          }),
       });
 
       if (attemptId !== this.oauthAttemptCounter) {
@@ -288,6 +299,27 @@ export class ModelSelectionController {
       this.onError(error instanceof Error ? error.message : String(error));
       this.resetPendingState();
     }
+  }
+
+  handleOAuthRedirectSubmit(redirectUrl: string | null) {
+    if (!this.pendingOAuthRedirectResolve || !this.pendingOAuthRedirectReject) {
+      return;
+    }
+
+    const reject = this.pendingOAuthRedirectReject;
+    const resolve = this.pendingOAuthRedirectResolve;
+    this.pendingOAuthRedirectResolve = null;
+    this.pendingOAuthRedirectReject = null;
+
+    if (!redirectUrl) {
+      reject(new Error('OAuth login cancelled. Provider unchanged.'));
+      this.resetPendingState();
+      return;
+    }
+
+    this.oauthStatusValue = 'Processing pasted redirect URL...';
+    this.emitChange();
+    resolve(redirectUrl);
   }
 
   private getProviderAuthMode(providerId: string): 'apiKey' | 'oauth' | 'none' {
@@ -314,6 +346,9 @@ export class ModelSelectionController {
     this.pendingSelectedModelId = null;
     this.oauthUrlValue = null;
     this.oauthStatusValue = null;
+    this.oauthCanPasteRedirectValue = false;
+    this.pendingOAuthRedirectResolve = null;
+    this.pendingOAuthRedirectReject = null;
     this.appStateValue = 'idle';
     this.emitChange();
   }
@@ -325,6 +360,9 @@ export class ModelSelectionController {
     this.pendingSelectedModelId = null;
     this.oauthUrlValue = null;
     this.oauthStatusValue = null;
+    this.oauthCanPasteRedirectValue = false;
+    this.pendingOAuthRedirectResolve = null;
+    this.pendingOAuthRedirectReject = null;
     this.appStateValue = 'idle';
     this.emitChange();
   }
