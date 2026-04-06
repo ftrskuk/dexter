@@ -37,7 +37,8 @@ Dexter takes complex financial questions and turns them into clear, step-by-step
 
 - [Bun](https://bun.com) runtime (v1.0 or higher)
 - OpenAI API key (get [here](https://platform.openai.com/api-keys))
-- Financial Datasets API key (get [here](https://financialdatasets.ai))
+- Financial Modeling Prep API key (get [here](https://site.financialmodelingprep.com/developer/docs))
+- Finnhub API key (get [here](https://finnhub.io))
 - Exa API key (get [here](https://exa.ai)) - optional, for web search
 
 #### Installing Bun
@@ -84,16 +85,23 @@ cp env.example .env
 # XAI_API_KEY=your-xai-api-key (optional)
 # OPENROUTER_API_KEY=your-openrouter-api-key (optional)
 
-# Institutional-grade market data for agents; AAPL, NVDA, MSFT are free
-# FINANCIAL_DATASETS_API_KEY=your-financial-datasets-api-key
+# Stock market data
+# FMP_API_KEY=your-fmp-api-key # Financial Modeling Prep fundamentals and market data
+# FINNHUB_API_KEY=your-finnhub-api-key # Finnhub quotes, news, and insider data
 
 # (Optional) If using Ollama locally
 # OLLAMA_BASE_URL=http://127.0.0.1:11434
 
-# Web Search (Exa preferred, Tavily fallback)
+# Web Search (Exa preferred, Perplexity fallback, Tavily fallback)
 # EXASEARCH_API_KEY=your-exa-api-key
+# PERPLEXITY_API_KEY=your-perplexity-api-key
 # TAVILY_API_KEY=your-tavily-api-key
+
+# (Optional) X/Twitter search for sentiment research
+# X_BEARER_TOKEN=your-x-bearer-token
 ```
+
+Dexter's finance tooling now uses Financial Modeling Prep and Finnhub. Add at least one of `FMP_API_KEY` or `FINNHUB_API_KEY` to enable stock data; adding both gives the agent broader coverage across quotes, statements, ratios, news, and insider activity.
 
 ## 🚀 How to Run
 
