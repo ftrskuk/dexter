@@ -37,8 +37,9 @@ Dexter takes complex financial questions and turns them into clear, step-by-step
 
 - [Bun](https://bun.com) runtime (v1.0 or higher)
 - OpenAI API key (get [here](https://platform.openai.com/api-keys))
-- Financial Modeling Prep API key (get [here](https://site.financialmodelingprep.com/developer/docs))
-- Finnhub API key (get [here](https://finnhub.io))
+- Yahoo Finance market data is used by default for stock quotes, price history, and news (no key required)
+- Financial Modeling Prep API key (optional, get [here](https://site.financialmodelingprep.com/developer/docs))
+- Finnhub API key (optional, get [here](https://finnhub.io))
 - Exa API key (get [here](https://exa.ai)) - optional, for web search
 
 #### Installing Bun
@@ -86,8 +87,9 @@ cp env.example .env
 # OPENROUTER_API_KEY=your-openrouter-api-key (optional)
 
 # Stock market data
-# FMP_API_KEY=your-fmp-api-key # Financial Modeling Prep fundamentals and market data
-# FINNHUB_API_KEY=your-finnhub-api-key # Finnhub quotes, news, and insider data
+# Yahoo Finance is used automatically for quotes, price history, and news (no key required)
+# FMP_API_KEY=your-fmp-api-key # Optional: Financial Modeling Prep statements and ratios
+# FINNHUB_API_KEY=your-finnhub-api-key # Optional: Finnhub estimates and insider trade data
 
 # (Optional) If using Ollama locally
 # OLLAMA_BASE_URL=http://127.0.0.1:11434
@@ -101,7 +103,13 @@ cp env.example .env
 # X_BEARER_TOKEN=your-x-bearer-token
 ```
 
-Dexter's finance tooling now uses Financial Modeling Prep and Finnhub. Add at least one of `FMP_API_KEY` or `FINNHUB_API_KEY` to enable stock data; adding both gives the agent broader coverage across quotes, statements, ratios, news, and insider activity.
+Dexter's finance tooling now uses a hybrid stack:
+
+- **Yahoo Finance** for stock quotes, price history, and company news (no API key required)
+- **Financial Modeling Prep** for financial statements and key ratios
+- **Finnhub** for analyst estimates and insider trades
+
+You can use Dexter with Yahoo-backed market data out of the box. Add `FMP_API_KEY` and `FINNHUB_API_KEY` to unlock broader stock analysis coverage across statements, ratios, estimates, and insider activity.
 
 ## 🚀 How to Run
 
