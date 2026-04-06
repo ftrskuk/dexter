@@ -38,7 +38,6 @@ export interface ModelSelectionState {
   pendingModels: Model[];
   oauthUrl?: string | null;
   oauthStatus?: string | null;
-  oauthCanPasteRedirect?: boolean;
 }
 
 type ChangeListener = () => void;
@@ -52,7 +51,6 @@ export class ModelSelectionController {
   private pendingSelectedModelId: string | null = null;
   private oauthUrlValue: string | null = null;
   private oauthStatusValue: string | null = null;
-  private oauthCanPasteRedirectValue = false;
   private oauthAttemptCounter = 0;
   private pendingOAuthRedirectResolve: ((value: string) => void) | null = null;
   private pendingOAuthRedirectReject: ((error: Error) => void) | null = null;
@@ -77,7 +75,6 @@ export class ModelSelectionController {
       pendingModels: this.pendingModelsValue,
       oauthUrl: this.oauthUrlValue,
       oauthStatus: this.oauthStatusValue,
-      oauthCanPasteRedirect: this.oauthCanPasteRedirectValue,
     };
   }
 
@@ -255,7 +252,6 @@ export class ModelSelectionController {
     this.appStateValue = 'oauth_pending';
     this.oauthStatusValue = 'Starting OpenAI Codex OAuth login...';
     this.oauthUrlValue = null;
-    this.oauthCanPasteRedirectValue = true;
     const attemptId = ++this.oauthAttemptCounter;
     this.emitChange();
 
@@ -346,7 +342,6 @@ export class ModelSelectionController {
     this.pendingSelectedModelId = null;
     this.oauthUrlValue = null;
     this.oauthStatusValue = null;
-    this.oauthCanPasteRedirectValue = false;
     this.pendingOAuthRedirectResolve = null;
     this.pendingOAuthRedirectReject = null;
     this.appStateValue = 'idle';
@@ -360,7 +355,6 @@ export class ModelSelectionController {
     this.pendingSelectedModelId = null;
     this.oauthUrlValue = null;
     this.oauthStatusValue = null;
-    this.oauthCanPasteRedirectValue = false;
     this.pendingOAuthRedirectResolve = null;
     this.pendingOAuthRedirectReject = null;
     this.appStateValue = 'idle';
