@@ -17,11 +17,58 @@ import { dexterPath } from './paths.js';
 // Types
 // ============================================================================
 
+export interface CacheSetOptions {
+  ttl?: number;
+}
+
+export interface Cache {
+  get<T>(key: string): Promise<T | null>;
+  set<T>(key: string, value: T, options?: CacheSetOptions): Promise<void>;
+}
+
+interface MemoryCacheEntry {
+  value: unknown;
+  expiresAt: number | null;
+}
+
+class MemoryCache implements Cache {
+  private readonly entries = new Map<string, MemoryCacheEntry>();
+
+  async get<T>(key: string): Promise<T | null> {
+    const entry = this.entries.get(key);
+    if (!entry) {
+      return null;
+    }
+
+    if (entry.expiresAt !== null && Date.now() > entry.expiresAt) {
+      this.entries.delete(key);
+      return null;
+    }
+
+    return entry.value as T;
+  }
+
+  async set<T>(key: string, value: T, options?: CacheSetOptions): Promise<void> {
+    const ttl = options?.ttl;
+    this.entries.set(key, {
+      value,
+      expiresAt: typeof ttl === 'number' && ttl > 0 ? Date.now() + ttl : null,
+    });
+  }
+}
+
+let sharedCache: Cache | null = null;
+
+export function getCache(): Cache {
+  sharedCache ??= new MemoryCache();
+  return sharedCache;
+}
+
 /**
  * A persisted cache entry.
  * Stores enough context to validate freshness and aid debugging.
  */
-interface CacheEntry {
+interface FileCacheEntry {
   endpoint: string;
   params: Record<string, unknown>;
   data: Record<string, unknown>;
@@ -94,7 +141,7 @@ export function buildCacheKey(
  * Validate that a parsed object has the shape of a CacheEntry.
  * Guards against truncated writes, schema changes, or manual edits.
  */
-function isValidCacheEntry(value: unknown): value is CacheEntry {
+function isValidCacheEntry(value: unknown): value is FileCacheEntry {
   if (typeof value !== 'object' || value === null) return false;
   const obj = value as Record<string, unknown>;
   return (
@@ -181,7 +228,7 @@ export function writeCache(
   const filepath = join(CACHE_DIR, cacheKey);
   const label = describeRequest(endpoint, params);
 
-  const entry: CacheEntry = {
+  const entry: FileCacheEntry = {
     endpoint,
     params,
     data,

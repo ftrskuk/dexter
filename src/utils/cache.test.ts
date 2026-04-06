@@ -63,7 +63,7 @@ describe('readCache / writeCache', () => {
     const endpoint = '/prices/';
     const params = { ticker: 'AAPL', start_date: '2024-01-01', end_date: '2024-12-31', interval: 'day', interval_multiplier: 1 };
     const data = { prices: [{ open: 100, close: 105, high: 106, low: 99 }] };
-    const url = 'https://api.financialdatasets.ai/prices/?ticker=AAPL&start_date=2024-01-01&end_date=2024-12-31';
+    const url = 'https://financialmodelingprep.com/api/v3/historical-price-full/AAPL?from=2024-01-01&to=2024-12-31';
 
     writeCache(endpoint, params, data, url);
     const cached = readCache(endpoint, params);
