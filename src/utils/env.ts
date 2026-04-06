@@ -46,6 +46,36 @@ export function checkApiKeyExists(apiKeyName: string): boolean {
   return false;
 }
 
+export function getApiKeyValue(apiKeyName: string): string | undefined {
+  const envValue = process.env[apiKeyName]?.trim();
+  if (envValue && !envValue.startsWith('your-')) {
+    return envValue;
+  }
+
+  if (existsSync('.env')) {
+    const envContent = readFileSync('.env', 'utf-8');
+    const lines = envContent.split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#') || !trimmed.includes('=')) {
+        continue;
+      }
+
+      const [key, ...valueParts] = trimmed.split('=');
+      if (key.trim() !== apiKeyName) {
+        continue;
+      }
+
+      const fileValue = valueParts.join('=').trim();
+      if (fileValue && !fileValue.startsWith('your-')) {
+        return fileValue;
+      }
+    }
+  }
+
+  return undefined;
+}
+
 export function saveApiKeyToEnv(apiKeyName: string, apiKeyValue: string): boolean {
   try {
     let lines: string[] = [];

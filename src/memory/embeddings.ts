@@ -1,6 +1,7 @@
 import { GoogleGenerativeAIEmbeddings } from '@langchain/google-genai';
 import { OllamaEmbeddings } from '@langchain/ollama';
 import { OpenAIEmbeddings } from '@langchain/openai';
+import { getApiKeyValue } from '@/utils/env';
 import type { EmbeddingProviderId, MemoryEmbeddingClient } from './types.js';
 
 const DEFAULT_OPENAI_MODEL = 'text-embedding-3-small';
@@ -11,10 +12,10 @@ const EMBEDDING_BATCH_SIZE = 64;
 type ResolvedProvider = Exclude<EmbeddingProviderId, 'auto' | 'none'>;
 
 function resolveProvider(preferred: EmbeddingProviderId): ResolvedProvider | null {
-  if (preferred === 'openai' && process.env.OPENAI_API_KEY) {
+  if (preferred === 'openai' && getApiKeyValue('OPENAI_API_KEY')) {
     return 'openai';
   }
-  if (preferred === 'gemini' && process.env.GOOGLE_API_KEY) {
+  if (preferred === 'gemini' && getApiKeyValue('GOOGLE_API_KEY')) {
     return 'gemini';
   }
   if (preferred === 'ollama') {
@@ -22,10 +23,10 @@ function resolveProvider(preferred: EmbeddingProviderId): ResolvedProvider | nul
   }
 
   if (preferred === 'auto') {
-    if (process.env.OPENAI_API_KEY) {
+    if (getApiKeyValue('OPENAI_API_KEY')) {
       return 'openai';
     }
-    if (process.env.GOOGLE_API_KEY) {
+    if (getApiKeyValue('GOOGLE_API_KEY')) {
       return 'gemini';
     }
     if (process.env.OLLAMA_BASE_URL) {
@@ -61,7 +62,7 @@ export function createEmbeddingClient(params: {
   if (resolved === 'openai') {
     const model = params.model || DEFAULT_OPENAI_MODEL;
     const embeddings = new OpenAIEmbeddings({
-      apiKey: process.env.OPENAI_API_KEY,
+      apiKey: getApiKeyValue('OPENAI_API_KEY'),
       model,
     });
     return {
@@ -75,7 +76,7 @@ export function createEmbeddingClient(params: {
   if (resolved === 'gemini') {
     const model = params.model || DEFAULT_GEMINI_MODEL;
     const embeddings = new GoogleGenerativeAIEmbeddings({
-      apiKey: process.env.GOOGLE_API_KEY,
+      apiKey: getApiKeyValue('GOOGLE_API_KEY'),
       model,
     });
     return {

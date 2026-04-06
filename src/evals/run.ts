@@ -11,6 +11,7 @@ import { ProcessTerminal, TUI } from '@mariozechner/pi-tui';
 import { Client } from 'langsmith';
 import type { EvaluationResult } from 'langsmith/evaluation';
 import { ChatOpenAI } from '@langchain/openai';
+import { getApiKeyValue } from '../utils/env.js';
 import { z } from 'zod';
 import fs from 'fs';
 import path from 'path';
@@ -164,7 +165,7 @@ const EvaluatorOutputSchema = z.object({
 
 const llm = new ChatOpenAI({
   model: 'gpt-5.4',
-  apiKey: process.env.OPENAI_API_KEY,
+  apiKey: getApiKeyValue('OPENAI_API_KEY'),
 });
 
 const structuredLlm = llm.withStructuredOutput(EvaluatorOutputSchema);

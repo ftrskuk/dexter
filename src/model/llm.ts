@@ -14,6 +14,8 @@ import type { TokenUsage } from '@/agent/types';
 import { logger } from '@/utils';
 import { classifyError, isNonRetryableError } from '@/utils/errors';
 import { resolveProvider, getProviderById } from '@/providers';
+import { getApiKeyValue } from '@/utils/env';
+import { getOpenAICodexRequestHeaders, getValidOpenAICodexAuth } from '@/utils/openai-codex-oauth';
 
 export const DEFAULT_PROVIDER = 'openai';
 export const DEFAULT_MODEL = 'gpt-5.4';
@@ -54,10 +56,10 @@ interface ModelOpts {
   streaming: boolean;
 }
 
-type ModelFactory = (name: string, opts: ModelOpts) => BaseChatModel;
+type ModelFactory = (name: string, opts: ModelOpts) => BaseChatModel | Promise<BaseChatModel>;
 
 function getApiKey(envVar: string): string {
-  const apiKey = process.env[envVar];
+  const apiKey = getApiKeyValue(envVar);
   if (!apiKey) {
     throw new Error(`[LLM] ${envVar} not found in environment variables`);
   }
@@ -66,6 +68,19 @@ function getApiKey(envVar: string): string {
 
 // Factories keyed by provider id — prefix routing is handled by resolveProvider()
 const MODEL_FACTORIES: Record<string, ModelFactory> = {
+  'openai-codex': async (name, opts) => {
+    const auth = await getValidOpenAICodexAuth();
+    return new ChatOpenAI({
+      model: name.replace(/^openai-codex:/, ''),
+      ...opts,
+      apiKey: auth.accessToken,
+      useResponsesApi: true,
+      configuration: {
+        baseURL: 'https://chatgpt.com/backend-api/codex',
+        defaultHeaders: getOpenAICodexRequestHeaders(auth),
+      },
+    });
+  },
   anthropic: (name, opts) =>
     new ChatAnthropic({
       model: name,
@@ -129,14 +144,14 @@ const DEFAULT_FACTORY: ModelFactory = (name, opts) =>
     apiKey: getApiKey('OPENAI_API_KEY'),
   });
 
-export function getChatModel(
+export async function getChatModel(
   modelName: string = DEFAULT_MODEL,
   streaming: boolean = false
-): BaseChatModel {
+): Promise<BaseChatModel> {
   const opts: ModelOpts = { streaming };
   const provider = resolveProvider(modelName);
   const factory = MODEL_FACTORIES[provider.id] ?? DEFAULT_FACTORY;
-  return factory(modelName, opts);
+  return await factory(modelName, opts);
 }
 
 interface CallLlmOptions {
@@ -204,7 +219,7 @@ export async function callLlm(prompt: string, options: CallLlmOptions = {}): Pro
   const { model = DEFAULT_MODEL, systemPrompt, outputSchema, tools, signal } = options;
   const finalSystemPrompt = systemPrompt || DEFAULT_SYSTEM_PROMPT;
 
-  const llm = getChatModel(model, false);
+  const llm = await getChatModel(model, false);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let runnable: Runnable<any, any> = llm;
@@ -296,7 +311,7 @@ export async function callLlmWithMessages(
 ): Promise<LlmResult> {
   const { model = DEFAULT_MODEL, tools, signal } = options;
 
-  const llm = getChatModel(model, false);
+  const llm = await getChatModel(model, false);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let runnable: Runnable<any, any> = llm;
@@ -339,7 +354,7 @@ export async function* streamLlmWithMessages(
 ): AsyncGenerator<AIMessageChunk, void> {
   const { model = DEFAULT_MODEL, tools, signal } = options;
 
-  const llm = getChatModel(model, true);
+  const llm = await getChatModel(model, true);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let runnable: Runnable<any, any> = llm;
