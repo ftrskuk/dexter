@@ -29,9 +29,6 @@ function resolveProvider(preferred: EmbeddingProviderId): ResolvedProvider | nul
     if (getApiKeyValue('GOOGLE_API_KEY')) {
       return 'gemini';
     }
-    if (process.env.OLLAMA_BASE_URL) {
-      return 'ollama';
-    }
   }
 
   return null;
