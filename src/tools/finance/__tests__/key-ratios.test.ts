@@ -49,6 +49,24 @@ describe('key ratios tool contracts', () => {
     expectEnvelope(result, { pe_ratio: 25.1 });
   });
 
+  it('keeps percentage ratio fields as decimals in tool output', async () => {
+    jest.spyOn(financeApi, 'getKeyRatios').mockResolvedValue({
+      grossMargin: 0.4733,
+      operatingMargin: 0.3238,
+      roe: 1.5994,
+      roa: 0.3362,
+    } as Awaited<ReturnType<typeof financeApi.getKeyRatios>>);
+
+    const result = await getKeyRatios.invoke({ ticker: 'AAPL' });
+
+    expectEnvelope(result, {
+      grossMargin: 0.4733,
+      operatingMargin: 0.3238,
+      roe: 1.5994,
+      roa: 0.3362,
+    });
+  });
+
   it('returns the historical key ratio envelope with redundant fields removed', async () => {
     jest.spyOn(financeApi, 'getKeyRatios').mockResolvedValue({
       pe_ratio: 20.4,
