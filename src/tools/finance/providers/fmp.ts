@@ -11,7 +11,7 @@ import type {
   StatementPeriod,
 } from '../types.js';
 
-const BASE_URL = 'https://financialmodelingprep.com/api/v3';
+const BASE_URL = 'https://financialmodelingprep.com/stable';
 
 type FmpPrimitive = number | string | boolean | null;
 type FmpRecord = Record<string, FmpPrimitive>;
@@ -122,9 +122,9 @@ export class FmpFinanceProvider implements FinanceProvider {
     const fmpPeriod = getFmpPeriod(period);
 
     const [income, balance, cashflow] = await Promise.all([
-      fetchFmp<FmpRecord[]>(`/income-statement/${normalizedSymbol}`, { period: fmpPeriod }),
-      fetchFmp<FmpRecord[]>(`/balance-sheet-statement/${normalizedSymbol}`, { period: fmpPeriod }),
-      fetchFmp<FmpRecord[]>(`/cash-flow-statement/${normalizedSymbol}`, { period: fmpPeriod }),
+      fetchFmp<FmpRecord[]>('/income-statement', { symbol: normalizedSymbol, period: fmpPeriod }),
+      fetchFmp<FmpRecord[]>('/balance-sheet-statement', { symbol: normalizedSymbol, period: fmpPeriod }),
+      fetchFmp<FmpRecord[]>('/cash-flow-statement', { symbol: normalizedSymbol, period: fmpPeriod }),
     ]);
 
     return {
@@ -137,11 +137,11 @@ export class FmpFinanceProvider implements FinanceProvider {
 
   async getRatios(symbol: string): Promise<KeyRatios> {
     const normalizedSymbol = symbol.trim().toUpperCase();
-    const ratios = await fetchFmp<Array<Record<string, unknown>>>(`/ratios/${normalizedSymbol}`, {});
+    const ratios = await fetchFmp<Array<Record<string, unknown>>>('/ratios', { symbol: normalizedSymbol });
     const latestRatios = Array.isArray(ratios) ? ratios[0] : undefined;
 
     if (!latestRatios || typeof latestRatios !== 'object') {
-      const metrics = await fetchFmp<Array<Record<string, unknown>>>(`/key-metrics/${normalizedSymbol}`, {});
+      const metrics = await fetchFmp<Array<Record<string, unknown>>>('/key-metrics', { symbol: normalizedSymbol });
       const latestMetrics = Array.isArray(metrics) ? metrics[0] : undefined;
 
       if (!latestMetrics || typeof latestMetrics !== 'object') {

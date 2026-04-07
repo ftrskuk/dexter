@@ -2,7 +2,6 @@ import YahooFinance from 'yahoo-finance2';
 import type { ChartResultArray } from 'yahoo-finance2/modules/chart';
 import type { FundamentalsTimeSeriesResult } from 'yahoo-finance2/modules/fundamentalsTimeSeries';
 import type { Quote as YahooQuote } from 'yahoo-finance2/modules/quote';
-import type { QuoteSummaryResult } from 'yahoo-finance2/modules/quoteSummary';
 import type {
   FinancialStatements,
   FinanceProvider,
@@ -15,20 +14,7 @@ import type {
 } from '../types.js';
 
 const POLITENESS_DELAY_MS = 100;
-const yahooFinance = new YahooFinance();
-
-const QUOTE_SUMMARY_MODULES_BY_PERIOD = {
-  annual: {
-    income: 'incomeStatementHistory',
-    balance: 'balanceSheetHistory',
-    cashFlow: 'cashflowStatementHistory',
-  },
-  quarterly: {
-    income: 'incomeStatementHistoryQuarterly',
-    balance: 'balanceSheetHistoryQuarterly',
-    cashFlow: 'cashflowStatementHistoryQuarterly',
-  },
-} as const;
+const yahooFinance = new YahooFinance({ suppressNotices: ['yahooSurvey'] });
 
 const FUNDAMENTALS_MODULE_BY_SECTION = {
   incomeStatement: 'financials',
@@ -228,30 +214,6 @@ function wrapYahooError(operation: string, symbol: string, error: unknown): Erro
   return new Error(`Yahoo Finance ${operation} failed for ${symbol}: ${message}`);
 }
 
-async function getQuoteSummaryStatements(
-  symbol: string,
-  period: StatementPeriod
-): Promise<{
-  incomeStatement: StatementRecord[];
-  balanceSheet: StatementRecord[];
-  cashFlow: StatementRecord[];
-}> {
-  const modules = QUOTE_SUMMARY_MODULES_BY_PERIOD[period];
-  const summary = await queueYahooCall(() =>
-    yahooFinance.quoteSummary(symbol, {
-      modules: [modules.income, modules.balance, modules.cashFlow],
-    })
-  );
-
-  const typedSummary = summary as QuoteSummaryResult;
-
-  return {
-    incomeStatement: normalizeQuoteSummarySection(typedSummary[modules.income], modules.income),
-    balanceSheet: normalizeQuoteSummarySection(typedSummary[modules.balance], 'balanceSheetStatements'),
-    cashFlow: normalizeQuoteSummarySection(typedSummary[modules.cashFlow], 'cashflowStatements'),
-  };
-}
-
 async function getFundamentalsStatements(
   symbol: string,
   period: StatementPeriod,
@@ -344,40 +306,16 @@ export class YahooFinanceProvider implements FinanceProvider {
     let cashFlow: StatementRecord[] = [];
 
     try {
-      const summaryStatements = await getQuoteSummaryStatements(symbol, period);
-      incomeStatement = summaryStatements.incomeStatement;
-      balanceSheet = summaryStatements.balanceSheet;
-      cashFlow = summaryStatements.cashFlow;
+      const fundamentalsStatements = await getFundamentalsStatements(symbol, period, [
+        'incomeStatement',
+        'balanceSheet',
+        'cashFlow',
+      ]);
+      incomeStatement = fundamentalsStatements.incomeStatement ?? [];
+      balanceSheet = fundamentalsStatements.balanceSheet ?? [];
+      cashFlow = fundamentalsStatements.cashFlow ?? [];
     } catch (error) {
-      warnings.push(wrapYahooError('statement summary lookup', symbol, error).message);
-    }
-
-    const missingSections = (['incomeStatement', 'balanceSheet', 'cashFlow'] as const).filter((section) => {
-      switch (section) {
-        case 'incomeStatement':
-          return incomeStatement.length === 0;
-        case 'balanceSheet':
-          return balanceSheet.length === 0;
-        case 'cashFlow':
-          return cashFlow.length === 0;
-      }
-    });
-
-    if (missingSections.length > 0) {
-      try {
-        const fallbackStatements = await getFundamentalsStatements(symbol, period, [...missingSections]);
-        incomeStatement = dedupeStatementRecords([
-          ...incomeStatement,
-          ...(fallbackStatements.incomeStatement ?? []),
-        ]);
-        balanceSheet = dedupeStatementRecords([
-          ...balanceSheet,
-          ...(fallbackStatements.balanceSheet ?? []),
-        ]);
-        cashFlow = dedupeStatementRecords([...cashFlow, ...(fallbackStatements.cashFlow ?? [])]);
-      } catch (error) {
-        warnings.push(wrapYahooError('fundamentals lookup', symbol, error).message);
-      }
+      warnings.push(wrapYahooError('fundamentals lookup', symbol, error).message);
     }
 
     let currency: string | null | undefined;
