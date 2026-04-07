@@ -156,7 +156,6 @@ function convertMessages(messages: BaseMessage[]): { instructions?: string; inpu
         for (const toolCall of message.tool_calls) {
           input.push({
             type: 'function_call',
-            id: toolCall.id,
             call_id: toolCall.id ?? randomUUID(),
             name: toolCall.name,
             arguments: JSON.stringify(toolCall.args ?? {}),
@@ -313,7 +312,13 @@ async function readCodexSseResponse(response: Response): Promise<AIMessage> {
     }
   }
 
-  const effectiveResponse = finalResponse ?? { output: latestOutputItems, usage: latestUsage };
+  const effectiveResponse = finalResponse
+    ? {
+        ...finalResponse,
+        output: finalResponse.output && finalResponse.output.length > 0 ? finalResponse.output : latestOutputItems,
+        usage: finalResponse.usage ?? latestUsage,
+      }
+    : { output: latestOutputItems, usage: latestUsage };
   return parseCodexResponse(effectiveResponse);
 }
 
