@@ -146,6 +146,11 @@ function readMetricNumber(metric: Record<string, unknown>, keys: string[]): numb
   return undefined;
 }
 
+function readMetricPercent(metric: Record<string, unknown>, keys: string[]): number | undefined {
+  const value = readMetricNumber(metric, keys);
+  return value === undefined ? undefined : value / 100;
+}
+
 export class FinnhubFinanceProvider implements FinanceProvider {
   private static nextAvailableAt = 0;
   private static queue = Promise.resolve();
@@ -254,10 +259,10 @@ export class FinnhubFinanceProvider implements FinanceProvider {
       pe: readMetricNumber(metric, ['peBasicExclExtraTTM', 'peTTM']),
       pb: readMetricNumber(metric, ['pbAnnual']),
       ps: readMetricNumber(metric, ['psTTM']),
-      roe: readMetricNumber(metric, ['roeTTM', 'roeAnnual']),
-      roa: readMetricNumber(metric, ['roaTTM', 'roaAnnual']),
-      grossMargin: readMetricNumber(metric, ['grossMarginTTM', 'grossMargin5Y']),
-      operatingMargin: readMetricNumber(metric, ['operatingMarginTTM', 'operatingMargin5Y']),
+      roe: readMetricPercent(metric, ['roeTTM', 'roeAnnual']),
+      roa: readMetricPercent(metric, ['roaTTM', 'roaAnnual']),
+      grossMargin: readMetricPercent(metric, ['grossMarginTTM', 'grossMargin5Y']),
+      operatingMargin: readMetricPercent(metric, ['operatingMarginTTM', 'operatingMargin5Y']),
       debtToEquity: readMetricNumber(metric, [
         'totalDebtToEquityQuarterly',
         'totalDebtToEquityAnnual',

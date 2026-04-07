@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { financeApi, stripFieldsDeep } from './api.js';
 import { formatToolResult } from '../types.js';
 
-const FMP_BASE_URL = 'https://financialmodelingprep.com/api/v3';
+const FMP_BASE_URL = 'https://financialmodelingprep.com/stable';
 
 const REDUNDANT_FINANCIAL_FIELDS = ['accession_number', 'currency', 'period'] as const;
 
@@ -72,10 +72,11 @@ async function fetchHistoricalFmpRatios(
 ): Promise<{ data: Array<Record<string, unknown>>; url: string }> {
   const searchParams = new URLSearchParams({
     apikey: getFmpApiKey(),
+    symbol: ticker,
     period: period === 'quarterly' ? 'quarter' : 'annual',
     limit: String(limit),
   });
-  const url = `${FMP_BASE_URL}/ratios/${ticker}`;
+  const url = `${FMP_BASE_URL}/ratios`;
   const response = await fetch(`${url}?${searchParams.toString()}`);
 
   if (!response.ok) {
@@ -85,7 +86,7 @@ async function fetchHistoricalFmpRatios(
   const data = await response.json() as unknown;
   return {
     data: Array.isArray(data) ? (data as Array<Record<string, unknown>>) : [],
-    url: `${url}?period=${period === 'quarterly' ? 'quarter' : 'annual'}&limit=${limit}`,
+    url: `${url}?symbol=${ticker}&period=${period === 'quarterly' ? 'quarter' : 'annual'}&limit=${limit}`,
   };
 }
 
